@@ -19,7 +19,7 @@
 #define NGRAM_NGRAM_RANDGEN_H_
 
 #include <sys/types.h>
-#include <unistd.h>
+#include <process.h>
 #include <vector>
 
 // Faster multinomial sampling possible if Gnu Scientific Library available.

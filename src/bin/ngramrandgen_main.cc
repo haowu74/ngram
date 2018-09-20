@@ -15,7 +15,7 @@
 // Generates random sentences from an LM or more generally paths through any
 // FST where epsilons are treated as failure transitions.
 
-#include <unistd.h>
+#include <process.h>
 
 #include <cstdlib>
 
@@ -33,7 +33,7 @@
 
 DEFINE_int32(max_length, INT_MAX, "Maximum sentence length");
 DEFINE_int64(max_sents, 1, "Maximum number of sentences to produce");
-DEFINE_int32(seed, time(nullptr) + getpid(), "Random seed");
+DEFINE_int32(seed, time(nullptr) + _getpid(), "Random seed");
 DEFINE_bool(remove_epsilon, false, "Remove epsilons from generated strings");
 DEFINE_bool(weighted, false,
             "Output tree weighted by sentence count vs. unweighted sentences");
