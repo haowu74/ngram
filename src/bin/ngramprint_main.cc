@@ -30,12 +30,14 @@ DEFINE_bool(negativelogs, false,
             "Show negative log probs/counts when printing");
 DEFINE_bool(integers, false, "Show just integer counts when printing");
 DEFINE_int64(backoff_label, 0, "Backoff label");
+DEFINE_int64(num, 0, "N-gram");
 DEFINE_bool(check_consistency, false, "Check model consistency");
 DEFINE_string(context_pattern, "", "Pattern of contexts to print");
 DEFINE_bool(include_all_suffixes, false, "Include suffixes of contexts");
 DEFINE_string(symbols, "",
               "Symbol table file. If not empty, causes it to be loaded from the"
               " specified file instead of using the one inside the input FST.");
+DEFINE_string(word, "", "First word");
 
 int main(int argc, char **argv) {
   string usage = "Print ngram counts and models.\n\n  Usage: ";
@@ -89,6 +91,6 @@ int main(int argc, char **argv) {
   }
 
   ngram.ShowNGramModel(show_backoff, FLAGS_negativelogs, FLAGS_integers,
-                       FLAGS_ARPA);
+                       FLAGS_ARPA, FLAGS_word, FLAGS_num);
   return 0;
 }

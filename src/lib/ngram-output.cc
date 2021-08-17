@@ -16,7 +16,8 @@
 
 #include <ctime>
 #include <deque>
-
+#include <numeric>
+#include <sstream>
 #include <fst/arcsort.h>
 #include <fst/vector-fst.h>
 
@@ -51,16 +52,18 @@ bool NGramOutput::InContext(const std::vector<Label> &ngram) const {
 
 // Print the N-gram model: each n-gram is on a line with its weight
 void NGramOutput::ShowNGramModel(NGramOutput::ShowBackoff showeps, bool neglogs,
-                                 bool intcnts, bool ARPA) const {
+                                 bool intcnts, bool ARPA, string word, int num) const {
   if (Error()) return;
   ostrm_.precision(7);
+  std::vector<std::pair<double, string>> predicts;
+  std::vector<std::pair<double, string>> autocorrect_predicts;
   if (ARPA) {
     ShowARPAModel();
   } else {
     string str = "";  // init n-grams from unigram state
     double start_wt;  // weight of <s> (count or prob) same as unigram </s>
     if (UnigramState() >= 0) {  // show n-grams from unigram state
-      ShowNGrams(UnigramState(), str, showeps, neglogs, intcnts);
+      ShowNGrams(UnigramState(), str, showeps, neglogs, intcnts, predicts, autocorrect_predicts, word, num);
       start_wt =
           WeightRep(GetFst().Final(UnigramState()).Value(), neglogs, intcnts);
       str = FLAGS_start_symbol;  // init n-grams from <s> state
@@ -69,7 +72,7 @@ void NGramOutput::ShowNGramModel(NGramOutput::ShowBackoff showeps, bool neglogs,
           WeightRep(GetFst().Final(GetFst().Start()).Value(), neglogs, intcnts);
     }
     // print <s> unigram following SRILM
-    if (InContext(GetFst().Start())) {
+    if (InContext(GetFst().Start()) && num == 0) {
       ostrm_ << FLAGS_start_symbol << '\t' << start_wt;
       if (showeps == ShowBackoff::INLINE &&
           UnigramState() >= 0)  // <s> state exists, then show backoff
@@ -77,7 +80,26 @@ void NGramOutput::ShowNGramModel(NGramOutput::ShowBackoff showeps, bool neglogs,
                                     neglogs, intcnts);
       ostrm_ << '\n';
     }
-    ShowNGrams(GetFst().Start(), str, showeps, neglogs, intcnts);
+    ShowNGrams(GetFst().Start(), str, showeps, neglogs, intcnts, predicts, autocorrect_predicts, word, num);
+  }
+  if (num > 0)
+  {
+	  if (predicts.size() > 0)
+	  {
+		  std::sort(predicts.begin(), predicts.end(), std::greater<std::pair<double, string>>());
+		  for (auto iter = predicts.begin(); iter != predicts.end(); iter++)
+		  {
+			  std::cout << iter->second << "\t\t" << iter->first << std::endl;
+		  }
+	  }
+	  else if(autocorrect_predicts.size() > 0)
+	  {
+		  std::sort(autocorrect_predicts.begin(), autocorrect_predicts.end(), std::greater<std::pair<double, string>>());
+		  for (auto iter = autocorrect_predicts.begin(); iter != autocorrect_predicts.end(); iter++)
+		  {
+			  std::cout << iter->second << "\t\t" << iter->first << std::endl;
+		  }
+	  }
   }
 }
 
@@ -196,7 +218,8 @@ void NGramOutput::ShowARPAModel() const {
 // Print n-grams leaving a particular state, standard output format
 void NGramOutput::ShowNGrams(StdArc::StateId st, const string &str,
                              NGramOutput::ShowBackoff showeps, bool neglogs,
-                             bool intcnts) const {
+                             bool intcnts, std::vector<std::pair<double, string>> &predicts, 
+							 std::vector<std::pair<double, string>> &autocorrect_predicts, string word, int num) const {
   if (st < 0) return;  // ignore for st < 0
   bool show = InContext(st);
   for (ArcIterator<StdExpandedFst> aiter(GetExpandedFst(), st); !aiter.Done();
@@ -208,29 +231,126 @@ void NGramOutput::ShowNGrams(StdArc::StateId st, const string &str,
     // Find symbol str.
     string symbol = GetFst().InputSymbols()->Find(arc.ilabel);
     string newstr = str;                        // history string
+	
     AppendWordToNGramHistory(&newstr, symbol);  // Full n-gram string
+	size_t ld;
+	ld = LevenshteinDistance(newstr, word);
+	if (newstr.find(word) == string::npos && ld > 1)
+	{
+		continue;
+	}
+	else if(num != 0)
+	{
+		int number_of_spaces = 0;
+		for (auto& iter : newstr)
+		{
+			if (iter == ' ')
+			{
+				number_of_spaces++;
+			}
+		}
+		if (number_of_spaces != num-1)
+		{
+			show = false;
+		}
+		else
+		{
+			show = true;
+		}
+	}
     if (show) {
-      ostrm_ << newstr << "\t";  // output n-gram and its weight
-      ostrm_ << WeightRep(arc.weight.Value(), neglogs, intcnts);
-      if (showeps == ShowBackoff::INLINE &&
-          StateOrder(arc.nextstate) > StateOrder(st))  // show backoff
-        ostrm_ << "\t" << WeightRep(GetBackoffCost(arc.nextstate).Value(),
-                                    neglogs, intcnts);
-      ostrm_ << '\n';
+		if (num == 0)
+		{
+			ostrm_ << newstr << "\t";  // output n-gram and its weight
+			ostrm_ << WeightRep(arc.weight.Value(), neglogs, intcnts);
+			if (showeps == ShowBackoff::INLINE &&
+				StateOrder(arc.nextstate) > StateOrder(st))  // show backoff
+				ostrm_ << "\t" << WeightRep(GetBackoffCost(arc.nextstate).Value(),
+					neglogs, intcnts);
+			ostrm_ << '\n';
+		}
+		else
+		{
+			if (newstr.find(word) != string::npos)
+			{
+				predicts.push_back(std::make_pair(WeightRep(arc.weight.Value(), neglogs, intcnts), newstr));
+			}
+			else
+			{
+				autocorrect_predicts.push_back(std::make_pair(WeightRep(arc.weight.Value(), neglogs, intcnts), newstr));
+			}
+		}
     }
     if (arc.ilabel != BackoffLabel() &&  // depth-first traversal
         StateOrder(arc.nextstate) > StateOrder(st))
-      ShowNGrams(arc.nextstate, newstr, showeps, neglogs, intcnts);
+      ShowNGrams(arc.nextstate, newstr, showeps, neglogs, intcnts, predicts, autocorrect_predicts, word, num);
   }
   if (show &&
-      GetFst().Final(st) != StdArc::Weight::Zero()) {  // show </s> counts
+      GetFst().Final(st) != StdArc::Weight::Zero() && num == 0) {  // show </s> counts
     if (str.size() > 0)  // if history string, print it
       ostrm_ << str << " ";
     ostrm_ << FLAGS_end_symbol << '\t'
            << WeightRep(GetFst().Final(st).Value(), neglogs, intcnts);
     ostrm_ << '\n';
   }
+
 }
+
+size_t NGramOutput::LevenshteinDistance(const string &s1, const string &s2) const
+{
+	vector<string> cont;
+	SplitSentence(s1, cont);
+	size_t smallest = s1.size();
+	for (auto iter = cont.begin(); iter < cont.end(); iter++)
+	{
+		const size_t m = (*iter).size();
+		const size_t n = s2.size();
+		if (m == 0)
+			return n;
+		if (n == 0)
+			return m;
+		std::vector<size_t> costs(n + 1);
+		std::iota(costs.begin(), costs.end(), 0);
+		size_t i = 0;
+		for (auto c1 : (*iter)) {
+			costs[0] = i + 1;
+			size_t corner = i;
+			size_t j = 0;
+			for (auto c2 : s2) {
+				size_t upper = costs[j + 1];
+				costs[j + 1] = (c1 == c2) ? corner
+					: 1 + std::min(std::min(upper, corner), costs[j]);
+				corner = upper;
+				++j;
+			}
+			++i;
+		}
+		if (costs[n] < smallest)
+		{
+			smallest = costs[n];
+		}
+	}
+	return smallest;
+}
+
+void NGramOutput::SplitSentence(const string& str, vector<string>& cont) const
+{
+	std::istringstream iss(str);
+	std::copy(std::istream_iterator<string>(iss),
+		std::istream_iterator<string>(),
+		back_inserter(cont));
+
+	//checking for punctuation marks and if found, we remove them from the word
+	for (int i = 0, sz = cont.size(); i < sz; i++) {
+		string word = cont.at(i);
+		for (int j = 0, len = word.length(); j < len; j++) {
+			if (ispunct(word[j])) {
+				cont.at(i) = word.substr(0, word.length() - 1);
+			}
+		}
+	}
+}
+
 
 // Show string from linear fst, for verbose output of perplexities
 void NGramOutput::ShowStringFst(const Fst<StdArc> &infst) const {

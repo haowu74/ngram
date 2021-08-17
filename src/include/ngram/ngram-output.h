@@ -71,7 +71,7 @@ class NGramOutput : public NGramMutableModel<StdArc> {
 
   // Print the N-gram model: each n-gram is on a line with its weight
   void ShowNGramModel(ShowBackoff showeps, bool neglogs, bool intcnts,
-                      bool ARPA) const;
+                      bool ARPA, string word="", int num=0) const;
 
   // Use n-gram model to calculate perplexity of input strings.
   bool PerplexityNGramModel(
@@ -147,7 +147,12 @@ class NGramOutput : public NGramMutableModel<StdArc> {
 
   // Print n-grams leaving a particular state, standard output format
   void ShowNGrams(StdArc::StateId st, const string &str, ShowBackoff showeps,
-                  bool neglogs, bool intcnts) const;
+                  bool neglogs, bool intcnts, std::vector<std::pair<double, string>> &predicts, 
+	              std::vector<std::pair<double, string>> &autocorrect_predicts, string word="", int num=0) const;
+
+  size_t LevenshteinDistance(const string &s1, const string &s2) const;
+
+  void SplitSentence(const string& str, vector<string>& cont) const;
 
   void ShowStringFst(const Fst<StdArc> &infst) const;
 
